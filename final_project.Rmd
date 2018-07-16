@@ -1,0 +1,43 @@
+---
+title: "final_project"
+author: "Bryon Mosier"
+date: "July 15, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(randomForest)
+library(ggplot2)
+library(sqldf)
+```
+
+```{r}
+# unemployment rate 1948-June 2018, included 6, 12, 24 month lag times
+unEmp = read.csv("https://github.com/mosierbryon/MSDA/raw/master/unemployment_lagged.csv")
+# average length of unemployment 1948-June 2018
+uLength = read.csv("https://github.com/mosierbryon/MSDA/raw/master/mean_unemployment_length.csv")
+```
+
+```{r}
+# correlation between unemployment rate and length sing spearman correlation (3 points higher than pearson)
+cor(x=unEmp$unemployment_rate, y=uLength$mean_unemployment_weeks, method="spearman")
+
+# scatter plot shows "weird" clustering for length observations above 20 weeks
+corplot = ggplot(data=unEmp, aes(x=unEmp$unemployment_rate, y=uLength$mean_unemployment_weeks))+
+            geom_point()
+corplot
+
+unEmp$DATE = as.Date(unEmp$DATE,"%m/%d/%Y")
+
+# plotting unemployment rate w/ length of unemployment
+unEmpTrend = ggplot(data=unEmp, aes(unEmp$DATE, unemployment_rate))+
+              geom_line(color="red")+
+              geom_line(aes(y=uLength$mean_unemployment_weeks),color="blue")+
+              labs(y="Unemployment Rate(red) & Lenth in Weeks(blue)")
+unEmpTrend
+
+# The time from 2008 or so is causing the that cluster of observations above 20 weeks
+```
+
