@@ -11,6 +11,7 @@ library(dplyr)
 library(randomForest)
 library(ggplot2)
 library(sqldf)
+library(caret)
 ```
 
 ```{r}
@@ -23,6 +24,12 @@ uLength = read.csv("https://github.com/mosierbryon/MSDA/raw/master/mean_unemploy
 extUI = read.csv("https://github.com/mosierbryon/MSDA/raw/master/extended_unemployment.csv")
 extUI$DATE = as.Date(extUI$DATE, "%m/%d/%Y")
 extUI$extension = as.factor(extUI$extension)
+rec = read.csv("https://github.com/mosierbryon/MSDA/raw/master/USREC.csv")
+rec$DATE = as.Date(rec$DATE, "%m/%d/%Y")
+rec$recession = as.factor(rec$recession)
+rec$recession_6 = as.factor(rec$recession_6)
+rec$recession_9 = as.factor(rec$recession_9)
+rec$recession_12 = as.factor(rec$recession_12)
 ```
 
 ```{r}
@@ -30,7 +37,8 @@ extUI$extension = as.factor(extUI$extension)
 cor(x=unEmp$unemployment_rate, y=uLength$mean_unemployment_weeks, method="spearman")
 
 # scatter plot shows "weird" clustering for length observations above 20 weeks
-corplot = ggplot(data=unEmp, aes(x=unEmp$unemployment_rate, y=uLength$mean_unemployment_weeks))+
+corplot = ggplot(data=unEmp, aes(x=unEmp$unemployment_rate,
+                                 y=uLength$mean_unemployment_weeks))+
             geom_point()
 corplot
 
@@ -42,6 +50,7 @@ unEmpTrend = ggplot(data=unEmp, aes(unEmp$DATE, unemployment_rate))+
 unEmpTrend
 
 # The time from 2008 or so is causing the that cluster of observations above 20 weeks
+
 ```
 
 ```{r}
@@ -56,5 +65,65 @@ summary(lm1);summary(lm1_lag12)
 
 lm2 = lm(data = unEmp, uLength$mean_unemployment_weeks~unEmp$rate_lag_12+extUI$extension)
 summary(lm2)
+```
+
+```{r}
+myTimeControl = trainControl(method = "timeslice",
+                              initialWindow = 36,
+                              horizon = 12,
+                              fixedWindow = FALSE)
+
+tuneLength.num = 5
+```
+
+```{r}
+allData = cbind(uLength,unEmp[,-1],extUI$extension)
+allData$DATE = as.Date(allData$DATE)
+summary(allData)
+colnames(allData) = c("date", "unemploymentLength", "unemploymentRate", "unemploymentRate6", "unemploymentRate12", "unemploymentRate24", "extension")
+class(allData$extension)
+```
+
+
+```{r}
+# lm doesn't like factors i.e. extention variable
+set.seed(1)
+lm.mod <- train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24,
+                  data = allData,
+                  method = "lm",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num,
+                  na.action = na.omit)
+lm.mod
+```
+
+```{r}
+rf.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension,
+                  data = allData,
+                  method = "rf",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num,
+                  na.action = na.omit)
+rf.mod
+```
+
+```{r}
+earth.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension,
+                  data = allData,
+                  method = "earth",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num,
+                  na.action = na.omit)
+earth.mod
+```
+
+```{r}
+glm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24,
+                  data = allData,
+                  method = "glm",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num,
+                  na.action = na.omit)
+glm.mod
 ```
 
