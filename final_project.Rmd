@@ -15,6 +15,12 @@ library(caret)
 ```
 
 ```{r}
+
+registerDoMC(cores=4)
+```
+
+
+```{r}
 # unemployment rate 1948-June 2018, included 6, 12, 24 month lag times
 unEmp = read.csv("https://github.com/mosierbryon/MSDA/raw/master/unemployment_lagged.csv")
 unEmp$DATE = as.Date(unEmp$DATE,"%m/%d/%Y")
@@ -30,6 +36,9 @@ rec$recession = as.factor(rec$recession)
 rec$recession_6 = as.factor(rec$recession_6)
 rec$recession_9 = as.factor(rec$recession_9)
 rec$recession_12 = as.factor(rec$recession_12)
+fedFunds = read.csv("https://github.com/mosierbryon/MSDA/raw/master/fed_funds_rate.csv")
+fedFunds$DATE = as.Date(fedFunds$DATE)
+head(rec)
 ```
 
 ```{r}
@@ -46,7 +55,7 @@ corplot
 unEmpTrend = ggplot(data=unEmp, aes(unEmp$DATE, unemployment_rate))+
               geom_line(color="red")+
               geom_line(aes(y=uLength$mean_unemployment_weeks),color="blue")+
-              labs(y="Unemployment Rate(red) & Lenth in Weeks(blue)")
+              labs(x=NULL,y="Unemployment Rate(red) & Lenth in Weeks(blue)")
 unEmpTrend
 
 # The time from 2008 or so is causing the that cluster of observations above 20 weeks
@@ -69,8 +78,8 @@ summary(lm2)
 
 ```{r}
 myTimeControl = trainControl(method = "timeslice",
-                              initialWindow = 36,
-                              horizon = 12,
+                              initialWindow = 72,
+                              horizon = 48,
                               fixedWindow = FALSE)
 
 tuneLength.num = 5
@@ -78,37 +87,47 @@ tuneLength.num = 5
 
 ```{r}
 allData = cbind(uLength,unEmp[,-1],extUI$extension)
-allData$DATE = as.Date(allData$DATE)
+#allData$DATE = as.Date(allData$DATE) this does weird stuff to the date
 summary(allData)
 colnames(allData) = c("date", "unemploymentLength", "unemploymentRate", "unemploymentRate6", "unemploymentRate12", "unemploymentRate24", "extension")
-class(allData$extension)
+allData = cbind(allData, rec[,-1])
+completeData = complete.cases(allData)
+allData = allData[completeData,]
 ```
 
 
 ```{r}
 # lm doesn't like factors i.e. extention variable
 set.seed(1)
-lm.mod <- train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24,
+lm.mod <- train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
                   data = allData,
                   method = "lm",
                   trControl = myTimeControl,
                   tuneLength=tuneLength.num,
                   na.action = na.omit)
 lm.mod
+lm.resid = resid(lm.mod)
+lm.pred = predict(lm.mod)
+plot(allData$date, lm.resid)
+
+ggplot(allData, aes(x = date, y = lm.resid))+
+  geom_point()+
 ```
 
 ```{r}
-rf.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension,
+rf.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
                   data = allData,
                   method = "rf",
                   trControl = myTimeControl,
                   tuneLength=tuneLength.num,
-                  na.action = na.omit)
+                  na.action = na.omit,
+                  importance = T)
 rf.mod
+varImp(rf.mod)
 ```
 
 ```{r}
-earth.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension,
+earth.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
                   data = allData,
                   method = "earth",
                   trControl = myTimeControl,
@@ -118,7 +137,7 @@ earth.mod
 ```
 
 ```{r}
-glm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24,
+glm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
                   data = allData,
                   method = "glm",
                   trControl = myTimeControl,
@@ -127,3 +146,47 @@ glm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploym
 glm.mod
 ```
 
+```{r}
+svm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+                  data = allData,
+                  method = "rvmPoly",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num,
+                  na.action = na.omit)
+svm.mod
+```
+
+```{r}
+knn.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+                  data = allData,
+                  method = "knn",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num,
+                  na.action = na.omit)
+knn.mod
+```
+
+```{r}
+pls.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+                  data = allData,
+                  method = "pls",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num,
+                  na.action = na.omit,
+                  preProc = c("center", "scale"))
+pls.mod
+pls.mod$dots
+# pls.resid = resid(pls.mod)
+# ggplot(data = NULL, aes(x = allData$unemploymentLength, y = pls.resid))+
+#   geom_point()
+```
+
+```{r}
+lasso.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+                  data = allData,
+                  method = "lasso",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num,
+                  na.action = na.omit)
+lasso.mod
+```
