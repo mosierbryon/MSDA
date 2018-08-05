@@ -52,8 +52,14 @@ unEmpTrend = ggplot(data=unEmp, aes(unEmp$DATE, unemployment_rate))+
               labs(x=NULL,y="Unemployment Rate(red) & Lenth in Weeks(blue)")
 unEmpTrend
 
+unEmpTrend_lag24 = ggplot(data=allData, aes(date, unemploymentRate24, group = 1))+
+              geom_line(color="red")+
+              geom_line(aes(y=allData$unemploymentLength),color="blue")+
+              labs(x=NULL,y="Unemployment Rate(red) & Lenth in Weeks(blue)")
+unEmpTrend_lag24
+plot(allData$date, allData$unemploymentLength)
+plot(uLength$DATE ,uLength$mean_unemployment_weeks)
 # The time from 2008 or so is causing the that cluster of observations above 20 weeks
-
 ```
 
 ```{r}
