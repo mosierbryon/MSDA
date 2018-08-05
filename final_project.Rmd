@@ -15,12 +15,6 @@ library(caret)
 ```
 
 ```{r}
-
-registerDoMC(cores=4)
-```
-
-
-```{r}
 # unemployment rate 1948-June 2018, included 6, 12, 24 month lag times
 unEmp = read.csv("https://github.com/mosierbryon/MSDA/raw/master/unemployment_lagged.csv")
 unEmp$DATE = as.Date(unEmp$DATE,"%m/%d/%Y")
