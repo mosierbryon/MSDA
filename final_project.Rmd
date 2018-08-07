@@ -1,6 +1,6 @@
 ---
 title: "final_project"
-author: "Bryon Mosier"
+author: "Bryon Mosier, Veronica Stephens, Hejin Shin"
 date: "July 15, 2018"
 output: html_document
 ---
@@ -12,6 +12,7 @@ library(randomForest)
 library(ggplot2)
 library(sqldf)
 library(caret)
+library(forecast)
 ```
 
 ```{r}
@@ -31,34 +32,115 @@ rec$recession_6 = as.factor(rec$recession_6)
 rec$recession_9 = as.factor(rec$recession_9)
 rec$recession_12 = as.factor(rec$recession_12)
 fedFunds = read.csv("https://github.com/mosierbryon/MSDA/raw/master/fed_funds_rate.csv")
-fedFunds$DATE = as.Date(fedFunds$DATE)
-head(rec)
+fedFunds$DATE = as.Date(fedFunds$DATE,"%m/%d/%Y")
+
+plot(fedFunds$DATE,fedFunds$funds_rate)
+unEmp.fedfunds = left_join(unEmp, fedFunds, on = "DATE")
+head(unEmp.fedfunds)
+unEmp.fedfunds = left_join(unEmp, fedFunds, on = "DATE")
+
+allData = cbind(unEmp,extUI$extension, uLength$mean_unemployment_weeks)
+#allData$DATE = as.Date(allData$DATE) this does weird stuff to the date
+summary(allData)
+colnames(allData) = c("date", "unemploymentRate", "unemploymentRate6", "unemploymentRate12", "unemploymentRate24", "extension", "unemploymentLength")
+allData = cbind(allData, rec[,-1])
+completeData = complete.cases(allData)
+allData = allData[completeData,]
+```
+
+```{r}
+# read csv: unemployment length 
+df_length <- read.csv('https://raw.githubusercontent.com/mosierbryon/MSDA/master/mean_unemployment_length.csv')
+names(df_length) <- c('date','mean_unemp_weeks')
+df_length <- df_length %>% mutate(date=as.Date(date,format='%m/%d/%Y'))
+
+# scatter plot: date and mean weekly unemployment
+p <- ggplot(df_length,aes(x=date,y=mean_unemp_weeks)) + geom_point(stat='identity') + theme_classic()
+p
+
+# read csv: unemployment rate
+df_rate <- read.csv('https://raw.githubusercontent.com/mosierbryon/MSDA/master/Unemployment.csv')
+df_rate <- df_rate %>% mutate(Month=as.character(Month),
+                               date=parse_date_time2(paste(Year,Month,'01',sep='-'),'%Y-%m-%d')) %>%  
+                       select(date,Unemployment_Rate,rate_women) %>% 
+                       mutate(date=as.Date(date))
+
+# combine dfs
+df_rate <- inner_join(df_length,df_rate,by=c('date'='date'))  
+df_rate <- df_rate %>% select(date,everything())
+
+# read csv: fred data
+df_fred <- read.csv('https://raw.githubusercontent.com/mosierbryon/MSDA/master/fred_mo_1919_2018_180715.csv')
+names(df_fred)[1] <- c('date')
+df_fred <- df_fred %>% mutate(date=as.Date(date,format='%Y-%m-%d'), year=year(date))
+
+
+df <- left_join(df_fred,df_rate,by=c('date','date'))
+df <- df %>% select(date,year,everything()) %>% filter(date >= '1948-01-01', date<'2018-06-01') %>% 
+              select(-PSAVERT) %>% mutate(month=month(date))
+df <- df %>% select(-month) %>% select(-year)
+
+# define number of predictors
+nvar <- ncol(df)-1
+
+# response var: df$mean_uemp_weeks
+# pred vars: date, INDPRO,CIVPART,CPIAUCSL,PAYEMS,Uemployment_Rate,rate_women
+
+```
+
+```{r}
+# difference plot
+df2 <- df %>% select(mean_unemp_weeks, Unemployment_Rate)
+df2 <- as.ts(df2)
+
+# acf, pacf
+tsdisplay(diff(df2),main="")
+
+mean_unemp_weeks <- df$mean_unemp_weeks
+plot(diff(mean_unemp_weeks))
+
 ```
 
 ```{r}
 # correlation between unemployment rate and length sing spearman correlation (3 points higher than pearson)
 cor(x=unEmp$unemployment_rate, y=uLength$mean_unemployment_weeks, method="spearman")
+cor(x=allData$unemploymentLength, y=allData$unemploymentRate12, method="spearman")
 
 # scatter plot shows "weird" clustering for length observations above 20 weeks
 corplot = ggplot(data=unEmp, aes(x=unEmp$unemployment_rate,
                                  y=uLength$mean_unemployment_weeks))+
-            geom_point()
+            geom_point()+
+            labs(y="Length of unemployment (weeks)",
+                 x="Unemployment Rate")+
+                 theme_bw()
 corplot
 
-# plotting unemployment rate w/ length of unemployment
-unEmpTrend = ggplot(data=unEmp, aes(unEmp$DATE, unemployment_rate))+
-              geom_line(color="red")+
-              geom_line(aes(y=uLength$mean_unemployment_weeks),color="blue")+
-              labs(x=NULL,y="Unemployment Rate(red) & Lenth in Weeks(blue)")
+# Length of unemployment trend
+unEmpTrend = ggplot(data=allData, aes(date, unemploymentLength, group = 1))+
+              geom_line()+
+              labs(x=NULL,y="Length of Unemployment")+
+              theme_bw()
 unEmpTrend
 
-unEmpTrend_lag24 = ggplot(data=allData, aes(date, unemploymentRate24, group = 1))+
+# plotting unemployment rate w/ length of unemployment
+unEmpTrend = ggplot(data=allData, aes(date, unemploymentRate, group = 1))+
               geom_line(color="red")+
               geom_line(aes(y=allData$unemploymentLength),color="blue")+
-              labs(x=NULL,y="Unemployment Rate(red) & Lenth in Weeks(blue)")
-unEmpTrend_lag24
+              labs(x=NULL,y="Unemployment Rate(red)")+
+              scale_y_continuous(sec.axis = sec_axis(~.,name = "Length of unemployment in weeks(blue)"))+
+              theme_bw()
+unEmpTrend
+
+unEmpTrend_lag12 = ggplot(data=allData, aes(date, unemploymentRate12, group = 1))+
+              geom_line(color="red")+
+              geom_line(aes(y=allData$unemploymentLength),color="blue")+
+              labs(x=NULL,y="Unemployment Rate lagged 12 months(red)")+
+              scale_y_continuous(sec.axis = sec_axis(~.,name = "Length of unemployment in weeks(blue)"))+
+              theme_bw()
+unEmpTrend_lag12
 plot(allData$date, allData$unemploymentLength)
-plot(uLength$DATE ,uLength$mean_unemployment_weeks)
+plot(unEmp$DATE ,uLength$mean_unemployment_weeks)
+
 # The time from 2008 or so is causing the that cluster of observations above 20 weeks
 ```
 
@@ -79,25 +161,15 @@ summary(lm2)
 ```{r}
 myTimeControl = trainControl(method = "timeslice",
                               initialWindow = 72,
-                              horizon = 48,
+                              horizon = 12,
                               fixedWindow = FALSE)
 
 tuneLength.num = 5
 ```
 
-```{r}
-allData = cbind(uLength,unEmp[,-1],extUI$extension)
-#allData$DATE = as.Date(allData$DATE) this does weird stuff to the date
-summary(allData)
-colnames(allData) = c("date", "unemploymentLength", "unemploymentRate", "unemploymentRate6", "unemploymentRate12", "unemploymentRate24", "extension")
-allData = cbind(allData, rec[,-1])
-completeData = complete.cases(allData)
-allData = allData[completeData,]
-```
-
 
 ```{r}
-# lm doesn't like factors i.e. extention variable
+# lm doesn't like factors i.e. extension variable
 set.seed(1)
 lm.mod <- train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
                   data = allData,
@@ -108,56 +180,74 @@ lm.mod <- train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploym
 lm.mod
 lm.resid = resid(lm.mod)
 lm.pred = predict(lm.mod)
-plot(allData$date, lm.resid)
+plot(lm.pred, lm.resid)
 
 ggplot(allData, aes(x = date, y = lm.resid))+
-  geom_point()+
+  geom_point()
 ```
 
 ```{r}
-rf.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+rf.mod = train(unemploymentLength~unemploymentRate12+extension,
                   data = allData,
                   method = "rf",
                   trControl = myTimeControl,
-                  tuneLength=tuneLength.num,
+                  tuneLength = 2,
                   na.action = na.omit,
-                  importance = T)
+                  importance = T,
+                  ntree = 1000)
 rf.mod
 varImp(rf.mod)
+
+rf.resid = resid(rf.mod)
+rf.pred = predict(rf.mod)
+plot(rf.pred, rf.resid)
+
+ggplot(allData, aes(x = date, y = lm.resid))+
+  geom_point()
 ```
 
 ```{r}
-earth.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+earth.mod = train(unemploymentLength~unemploymentRate12+extension,
                   data = allData,
                   method = "earth",
                   trControl = myTimeControl,
                   tuneLength=tuneLength.num,
                   na.action = na.omit)
 earth.mod
+
+earth.resid = resid(earth.mod)
+earth.pred = predict(earth.mod)
+plot(earth.pred, earth.resid)
+
+ggplot(allData, aes(x = date, y = earth.pred))+
+  geom_point()+
+  geom_line(aes(y=unemploymentLength))
 ```
 
 ```{r}
-glm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
-                  data = allData,
-                  method = "glm",
-                  trControl = myTimeControl,
-                  tuneLength=tuneLength.num,
-                  na.action = na.omit)
-glm.mod
+# No need for this, same as method = "lm"
+# glm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+#                   data = allData,
+#                   method = "glm",
+#                   trControl = myTimeControl,
+#                   tuneLength=tuneLength.num,
+#                   na.action = na.omit)
+# glm.mod
 ```
 
 ```{r}
-svm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
-                  data = allData,
-                  method = "rvmPoly",
-                  trControl = myTimeControl,
-                  tuneLength=tuneLength.num,
-                  na.action = na.omit)
-svm.mod
+# takes to long to run - don't use
+# svm.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+#                   data = allData,
+#                   method = "rvmPoly",
+#                   trControl = myTimeControl,
+#                   tuneLength=tuneLength.num,
+#                   na.action = na.omit)
+# svm.mod
 ```
 
 ```{r}
-knn.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+knn.mod = train(unemploymentLength~unemploymentRate12+extension,
                   data = allData,
                   method = "knn",
                   trControl = myTimeControl,
@@ -167,7 +257,7 @@ knn.mod
 ```
 
 ```{r}
-pls.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+pls.mod = train(unemploymentLength~unemploymentRate12+extension,
                   data = allData,
                   method = "pls",
                   trControl = myTimeControl,
@@ -175,18 +265,40 @@ pls.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploym
                   na.action = na.omit,
                   preProc = c("center", "scale"))
 pls.mod
-pls.mod$dots
 # pls.resid = resid(pls.mod)
 # ggplot(data = NULL, aes(x = allData$unemploymentLength, y = pls.resid))+
 #   geom_point()
 ```
 
 ```{r}
-lasso.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+# does very, very poorly
+# lasso.mod = train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+#                   data = allData,
+#                   method = "lasso",
+#                   trControl = myTimeControl,
+#                   tuneLength=tuneLength.num,
+#                   na.action = na.omit)
+# lasso.mod
+```
+
+```{r}
+# lm doesn't like factors i.e. extention variable
+set.seed(1)
+lm.mod <- train(unemploymentLength~unemploymentRate12+extension,
                   data = allData,
-                  method = "lasso",
+                  method = "lm",
                   trControl = myTimeControl,
                   tuneLength=tuneLength.num,
                   na.action = na.omit)
-lasso.mod
+lm.mod
+lm.resid = resid(lm.mod)
+lm.pred = predict(lm.mod)
+plot(lm.pred, lm.resid)
+
+ggplot(allData, aes(x = date, y = lm.pred))+
+  geom_point(color = "blue")+
+  geom_line(aes(y=unemploymentLength), color="red")+
+  labs(y="Predicted & Actual - Linear Regression",
+       x=NULL)+
+  theme_bw()
 ```
