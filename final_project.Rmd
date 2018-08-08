@@ -13,6 +13,7 @@ library(ggplot2)
 library(sqldf)
 library(caret)
 library(forecast)
+library(lubridate)
 ```
 
 ```{r}
@@ -96,6 +97,7 @@ df2 <- as.ts(df2)
 # acf, pacf
 tsdisplay(diff(df2),main="")
 
+# difference plot
 mean_unemp_weeks <- df$mean_unemp_weeks
 plot(diff(mean_unemp_weeks))
 
@@ -171,7 +173,7 @@ tuneLength.num = 5
 ```{r}
 # lm doesn't like factors i.e. extension variable
 set.seed(1)
-lm.mod <- train(unemploymentLength~unemploymentRate+unemploymentRate12+unemploymentRate24+extension+recession+recession_6+recession_9+recession_12,
+lm.mod <- train(unemploymentLength~unemploymentRate12+extension,
                   data = allData,
                   method = "lm",
                   trControl = myTimeControl,
